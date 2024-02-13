@@ -43,19 +43,26 @@ In this guide, I will walk you through the process of creating a web service for
 Once I received this pre-booted up raspberry pi cluster, I connected each raspberry pi node to my local area network via Wifi and connected to each node via SSH from my laptop in order to have a more comfortable working environment, so I did not have to always be next to the cluster with a monitor, mouse and keyboard connected to it. Once we have access to every node from my laptop via SSH, we’re in business! You can start following the steps from this chapter on the website: “https://rpi4cluster.com/k3s/k3s-nodes-setting/” and begin configuring your cluster with the necessary tools for this project. Please note that you do not have to connect to the cluster via SSH from your personal computer, but as I said before, I found it more comfortable doing it that way.
 The last necessary chapter from the rpi4cluster website will be the openfaas first function. We won’t follow the exact steps on that last required chapter, as they create an emailing function, but it holds very important information about how to create, deploy and invoke your openfaas function on the raspberry pi cluster. Everything after that, including Redis, will not be necessary for this project, although it could provide helpful insights into your cluster’s performance.
 Once you have all of that set up, I recommend reading the article:How to create YOLOv8-based object detection web service using Python, in order to get the background information necessary to know what we will be building with this python code.
-This blog will essentially be a blend of the openfaas-first-function chapter of the rpi4cluster website and the dev.to blog, with slight adjustments to the beginning of the dev.to blog and the “create a webservice on python” section of it, as well since we will be pulling a python template on openfaas instead of a standalone python file being executed and continuously running. Following the instructions of the rpi4cluster first-openfaas-function, we will pull a slightly different version of the python template, which will be the python-http-debian template, in order to avoid any potential issues you might get from when the dockerfile installs any requirements, to make sure they are compatible with my setup, since I am running a Debian/GNU Linux distro. Pulling this template using the command:
+This blog will essentially be a blend of the openfaas-first-function chapter of the rpi4cluster website and the dev.to blog, with slight adjustments to the beginning of the dev.to blog and the “create a webservice on python” section of it, as well since we will be pulling a python template on openfaas instead of a standalone python file being executed and continuously running.
+Following the instructions of the rpi4cluster first-openfaas-function, we will pull a slightly different version of the python template, which will be the python-http-debian template, in order to avoid any potential issues you might get from when the dockerfile installs any requirements, to make sure they are compatible with my setup, since I am running a Debian/GNU Linux distro. Pulling this template using the command:
+
 faas-cli new --lang python3-http-debian “your-function-name”
+
 Creates a new directory with the same name as your-function-name and a .yml file of the same name as well. We will use this .yml file later to build our function, once we have the correct handle logic and required dependencies. Change the directory to your-function-name directory that was just created using the command:
+
 cd your-function-name
 
 Back End Deployment Options:
 To deploy YOLOv8 models, originally created using PyTorch and exported as .pt files, the Ultralytics API was traditionally employed. However, for production in k3s cluster, all that's needed is to run the model with an input image and receive the resulting bounding boxes. Ultralytics API's export function proves valuable, converting any YOLOv8 model to a format usable by external applications. One such format is ONNX, which serves as a universal platform for running neural networks.
 Make sure you have Ultralytics installed on your laptop or computer using pip:
+
 pip install ultralytics
 
 Export YOLOv8 Model to ONNX:
 Exporting the YOLOv8 model to ONNX format involves loading the model and executing a Python script. Using Ultralytics, this process is streamlined with a few lines of code, resulting in an ONNX file ready for deployment. Lets create a file using the command:
+
 nano export_yolov8.py
+
 Fill it with the following contents:
 from ultralytics import YOLO
 
@@ -65,10 +72,13 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
 In this file we load the middle-sized YOLOv8 model for object detection and export it to the ONNX format
 The model is pretrained on COCO dataset and can detect 80 object classes. On Mac, Press Control^ + X to exit, Y to save
 You will want to execute this using the following command:
+
 python export_yolov8.py
+
 It will result in something like this:
 Ultralytics YOLOv8.0.212 🚀 Python-3.9.2 torch-2.1.1 CPU (Cortex-A72)
 YOLOv8m summary (fused): 218 layers, 25886080 parameters, 0 gradients, 78.9 GFLOPs
@@ -86,8 +96,8 @@ Visualize:       https://netron.app
 root@master2:~/openfaas_scripts/yoloedge-debian# ls
 export_yolov8.py  handler.py.save  requirements.txt  yolov8m.onnx
 handler.py	  handler_test.py  tox.ini	     yolov8m.pt
-The new files created from executing this python script are in bold and underlined. It downloads the .pt model if it does not find it in the current directory already, then exports it in onnx format to be used by our API serverless endpoint.
 
+The new files created from executing this python script are in bold and underlined. It downloads the .pt model if it does not find it in the current directory already, then exports it in onnx format to be used by our API serverless endpoint.
 Next, copy and paste this code into the handler function, to find out what each def function besides the handle does, you can check the How to create a Yolov8-based object detection web service using Python article.
 
 For the handle def function each line represents:
@@ -107,16 +117,21 @@ boxes = detect_objects_on_image(buf): This line calls a function named detect_ob
 result = '\n'.join(json.dumps(box) for box in boxes): This line converts each detected box into a JSON string and joins them with newline characters. The json.dumps() function converts a Python object (in this case, each box) into a JSON string.
 print("Result:", result): This line prints the result, which is a JSON string representing the detected boxes.
 return {...}: This line returns a dictionary containing the response data. It likely includes a status code, response body (containing the detected boxes), and headers indicating the content type.
+
 Once we have the handler.py function down, we can go ahead and type in our dependencies on the requirements.txt file. For this project, we will require only 3 which are:
 onnxruntime
 pillow
 numpy
+
 Copy and paste these three onto the requirements.txt file in order to install required dependencies for our handler.py function.
 Once we have that information, we can go ahead and build, deploy, and invoke our openfaas function in order to have this yolov8-based object detection algorithm running on the Edge!
 I would recommend following the “OpenFaaS First Function” Chapter from the rpi4cluster.com website for guidance. You will first build and push your openfaas function using the following command:
+
 faas-cli publish -f “your-function-name”.yml --platforms linux/arm64
+
 If you receive an error message, continue following the rpi4cluster article, it has steps to overcome an error message typical of receiving after building this function, which is using the buildx solution
 If all goes well right after the publish command you should receive something similar to the following:
+
 #25 pushing layers
 #25 pushing layers 4.7s done
 #25 pushing manifest for registry.cube.local:5000/“your-function-name”:latest
@@ -128,13 +143,18 @@ Image: registry.cube.local:5000/”your-function-name”:latest built.
 
 Total build time: 57.37s
 Up next, deploy the function on your kubernetes server:
+
 faas-cli deploy -f mailme.yml
+
 To send it an image and invoke it, you can use the following command:
+
 curl -X POST --data-binary "@/path/to/source/file.jpg" openfaas.cube.local:8080/function/”your-function-name”
+
 And you should see similar results!:
 root@master2:~/openfaas_scripts# curl -X POST --data-binary "@/root/giraffe.jpg" openfaas.cube.local:8080/function/yoloonedge
 [165.67729711532593, 29.645538330078125, 448.03634881973267, 442.7772521972656, "giraffe", 0.9456049203872681]
 [247.4454402923584, 204.80246543884277, 427.54154205322266, 444.31262016296387, "zebra", 0.9367939233779907]
+
 If you encounter any issues with OpenFaaS, I recommend going through the rpi4cluster.com website for any troubleshooting needs.
 Congratulations! You have successfully deployed an AI powered application on the edge!
 Please check my github for all my source code: https://github.com/rubenmendoza1290/Edge.git
